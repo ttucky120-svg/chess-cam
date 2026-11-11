@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>หมากรุกกล้องสด — วิเคราะห์ตาเดิน</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#14161a;--card:#1d2026;--line:#2c313a;--tx:#e9ecf1;--mut:#9aa3b2;--acc:#3ddc84;--warn:#ffb648;--lt:#eed9b6;--dk:#b58863}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:'IBM Plex Sans Thai',system-ui,sans-serif;font-size:15px;line-height:1.5}
+header{padding:14px 16px 6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+h1{font-size:19px;margin:0;font-weight:700}
+.pill{font-size:12px;padding:3px 9px;border-radius:99px;background:var(--line);color:var(--mut)}
+.pill.ok{background:#173d2a;color:var(--acc)}
+main{display:grid;gap:12px;padding:8px 12px 30px;max-width:1150px;margin:0 auto}
+@media(min-width:900px){main{grid-template-columns:1.1fr 1fr;align-items:start}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+#stage{position:relative;width:100%;background:#000;border-radius:10px;overflow:hidden;min-height:180px;display:flex;align-items:center;justify-content:center}
+#vid,#photo{width:100%;height:auto;display:block}
+#ov{position:absolute;left:0;top:0;touch-action:none}
+#placeholder{color:var(--mut);text-align:center;padding:40px 16px;font-size:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+button,select,.filebtn{font:inherit;font-size:14px;border:1px solid var(--line);background:#262a32;color:var(--tx);border-radius:10px;padding:8px 12px;cursor:pointer}
+button.pri,.filebtn.pri{background:var(--acc);color:#05200f;border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.45}
+.filebtn input{display:none}
+#status{margin-top:10px;padding:9px 11px;border-radius:10px;background:#11161d;border-left:3px solid var(--acc);font-size:14px;min-height:20px}
+#status.warn{border-left-color:var(--warn)}
+#cands{display:none;margin-top:8px}
+#cands button{margin:4px 6px 0 0}
+#best{display:flex;gap:12px;align-items:stretch}
+#evalbar{width:14px;border-radius:7px;background:#333;position:relative;overflow:hidden;flex:none}
+#evalfill{position:absolute;left:0;right:0;bottom:0;background:#f2f2f2;height:50%;transition:height .3s}
+#bestTxt{flex:1;min-width:0}
+#bestMove{font-size:28px;font-weight:700;color:var(--acc);line-height:1.2}
+#bestSub{color:var(--mut);font-size:13px}
+#pv{font-size:13px;color:var(--mut);margin-top:4px;word-break:break-word}
+#boardWrap{position:relative;width:100%;max-width:520px;margin:10px auto 0;aspect-ratio:1}
+#board{display:grid;grid-template-columns:repeat(8,1fr);width:100%;height:100%;border-radius:6px;overflow:hidden;user-select:none}
+.sq{position:relative;display:flex;align-items:center;justify-content:center;font-size:min(9.5vw,52px);line-height:1;cursor:pointer}
+.sq.lt{background:var(--lt)}.sq.dk{background:var(--dk)}
+.sq.last::after{content:'';position:absolute;inset:0;background:rgba(255,230,0,.33)}
+.sq.sel::after{content:'';position:absolute;inset:0;background:rgba(61,220,132,.45)}
+.sq .pc{position:relative;z-index:1}
+.pc.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000,0 1px 2px rgba(0,0,0,.6)}
+.pc.b{color:#111;text-shadow:0 0 1px rgba(255,255,255,.5)}
+.co{position:absolute;font-size:10px;font-weight:600;opacity:.75;z-index:1}
+.co.f{right:3px;bottom:1px}.co.r{left:3px;top:1px}
+.sq.lt .co{color:var(--dk)}.sq.dk .co{color:var(--lt)}
+#arrows{position:absolute;inset:0;pointer-events:none}
+#moves{font-size:13px;color:var(--mut);margin-top:10px;max-height:90px;overflow:auto}
+#moves b{color:var(--tx);font-weight:600}
+label{font-size:13px;color:var(--mut)}
+input[type=text]{font:inherit;font-size:13px;background:#11161d;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:8px;flex:1;min-width:0}
+input[type=range]{width:120px}
+details{margin-top:10px;font-size:13px;color:var(--mut)}
+details li{margin-bottom:4px}
+.big{font-size:16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>♞ หมากรุกกล้องสด</h1>
+  <span id="engLabel" class="pill">กำลังโหลด engine…</span>
+</header>
+<main>
+  <section class="card">
+    <div id="stage">
+      <div id="placeholder">กด <b>เปิดกล้อง</b> แล้วตั้งมือถือให้มองเห็นกระดานทั้งหมดจากด้านบน<br>(ถ้าเปิดกล้องสดไม่ได้ ใช้ <b>ถ่ายรูป</b> แทน)</div>
+      <video id="vid" playsinline muted autoplay style="display:none"></video>
+      <canvas id="photo" style="display:none"></canvas>
+      <canvas id="ov"></canvas>
+    </div>
+    <div class="row">
+      <button id="btnCam" class="pri">📷 เปิดกล้อง</button>
+      <label class="filebtn" id="photoLbl">🖼️ ถ่ายรูป<input type="file" id="photoIn" accept="image/*" capture="environment"></label>
+      <button id="btnCalib">📐 ตั้งมุมกระดาน</button>
+      <button id="btnTrack" disabled>⏸ หยุดติดตาม</button>
+    </div>
+    <div id="status">เริ่มจากตำแหน่งตั้งต้นของเกม แล้วเปิดกล้อง</div>
+    <div id="cands"><div style="font-size:13px;color:var(--warn)">ไม่แน่ใจว่าเดินตาไหน — เลือกให้หน่อย:</div><div id="candBtns"></div></div>
+    <div class="row">
+      <label>ความไว</label><input type="range" id="sens" min="0.5" max="2" step="0.1" value="1">
+      <button id="btnRef">🔄 จับภาพอ้างอิงใหม่</button>
+    </div>
+    <details>
+      <summary>วิธีใช้ให้แม่น</summary>
+      <ol>
+        <li>วางมือถือนิ่งๆ เหนือกระดาน (ขาตั้ง/พิงของ) ให้เห็นครบ 64 ช่อง แสงสม่ำเสมอ</li>
+        <li>กด <b>ตั้งมุมกระดาน</b> แล้วแตะมุมนอกของกระดานตามลำดับ <b>a1 → h1 → h8 → a8</b> (a1 = มุมซ้ายล่างเมื่อมองจากฝั่งขาว ที่เรือขาวยืน) ลากจุดมุมปรับทีหลังได้</li>
+        <li>จัดหมากเป็นตำแหน่งเริ่มต้น (หรือตรงกับกระดานด้านขวา) แล้วรอขึ้นว่า “พร้อม”</li>
+        <li>เดินหมากตามปกติ เอามือออกจากกระดาน ระบบจะรอภาพนิ่ง ~1 วิ แล้วตรวจว่าเดินตาไหน (เทียบกับตาเดินที่ถูกกติกาทั้งหมด)</li>
+        <li>ถ้าจับผิด กด ↩️ ย้อน แล้วแตะเดินบนกระดานด้านขวาเอง จากนั้นกด <b>จับภาพอ้างอิงใหม่</b></li>
+      </ol>
+      ระบบไม่ได้ “อ่าน” ชนิดหมากจากภาพ แต่ดูว่าช่องไหนเปลี่ยน แล้วจับคู่กับตาเดินที่ถูกกติกา จึงต้องเริ่มจากตำแหน่งที่ถูกต้องเสมอ
+    </details>
+  </section>
+
+  <section class="card">
+    <div id="best">
+      <div id="evalbar"><div id="evalfill"></div></div>
+      <div id="bestTxt">
+        <div id="bestSub">ตาเดินที่ดีที่สุด</div>
+        <div id="bestMove">—</div>
+        <div id="bestEval" class="big"></div>
+        <div id="pv"></div>
+      </div>
+    </div>
+    <div id="boardWrap">
+      <div id="board"></div>
+      <svg id="arrows" viewBox="0 0 8 8"></svg>
+    </div>
+    <div class="row">
+      <label>ช่วยฝั่ง</label>
+      <select id="side"><option value="w">ขาว</option><option value="b">ดำ</option><option value="both">ทั้งสองฝั่ง</option></select>
+      <label>คิด</label>
+      <select id="think"><option value="700">0.7 วิ</option><option value="1500" selected>1.5 วิ</option><option value="3000">3 วิ</option><option value="6000">6 วิ</option></select>
+    </div>
+    <div class="row">
+      <button id="btnPlay">▶️ เดินตามแนะนำ</button>
+      <button id="btnUndo">↩️ ย้อน</button>
+      <button id="btnFlip">🔃 กลับด้าน</button>
+      <button id="btnNew">🆕 เกมใหม่</button>
+    </div>
+    <div id="moves"></div>
+    <div class="row">
+      <input type="text" id="fenIn" placeholder="วาง FEN เพื่อตั้งตำแหน่ง">
+      <button id="btnFen">ตั้ง</button>
+      <button id="btnCopy">คัดลอก FEN</button>
+    </div>
+  </section>
+</main>
+
+<script id="eng">
+// ===== Mini chess engine (0x88) — move gen, FEN, SAN, search =====
+var CE = (function () {
+  var EMPTY = 0, P = 1, N = 2, B = 3, R = 4, Q = 5, K = 6, BLACK = 8;
+  var NDIR = [33, 31, 18, 14, -33, -31, -18, -14];
+  var BDIR = [17, 15, -17, -15];
+  var RDIR = [16, 1, -16, -1];
+  var KDIR = [17, 15, -17, -15, 16, 1, -16, -1];
+  var VAL = [0, 100, 320, 330, 500, 900, 0];
+  // PSTs (white perspective, index rank*8+file, rank 0 = rank1)
+  var PST = {};
+  PST[P] = [0,0,0,0,0,0,0,0, 5,10,10,-20,-20,10,10,5, 5,-5,-10,0,0,-10,-5,5, 0,0,0,20,20,0,0,0, 5,5,10,25,25,10,5,5, 10,10,20,30,30,20,10,10, 50,50,50,50,50,50,50,50, 0,0,0,0,0,0,0,0];
+  PST[N] = [-50,-40,-30,-30,-30,-30,-40,-50, -40,-20,0,5,5,0,-20,-40, -30,5,10,15,15,10,5,-30, -30,0,15,20,20,15,0,-30, -30,5,15,20,20,15,5,-30, -30,0,10,15,15,10,0,-30, -40,-20,0,0,0,0,-20,-40, -50,-40,-30,-30,-30,-30,-40,-50];
+  PST[B] = [-20,-10,-10,-10,-10,-10,-10,-20, -10,5,0,0,0,0,5,-10, -10,10,10,10,10,10,10,-10, -10,0,10,10,10,10,0,-10, -10,5,5,10,10,5,5,-10, -10,0,5,10,10,5,0,-10, -10,0,0,0,0,0,0,-10, -20,-10,-10,-10,-10,-10,-10,-20];
+  PST[R] = [0,0,0,5,5,0,0,0, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, 5,10,10,10,10,10,10,5, 0,0,0,0,0,0,0,0];
+  PST[Q] = [-20,-10,-10,-5,-5,-10,-10,-20, -10,0,5,0,0,0,0,-10, -10,5,5,5,5,5,0,-10, 0,0,5,5,5,5,0,-5, -5,0,5,5,5,5,0,-5, -10,0,5,5,5,5,0,-10, -10,0,0,0,0,0,0,-10, -20,-10,-10,-5,-5,-10,-10,-20];
+  PST[K] = [20,30,10,0,0,10,30,20, 20,20,0,0,0,0,20,20, -10,-20,-20,-20,-20,-20,-20,-10, -20,-30,-30,-40,-40,-30,-30,-20, -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30];
+  var KEND = [-50,-30,-30,-30,-30,-30,-30,-50, -30,-30,0,0,0,0,-30,-30, -30,-10,20,30,30,20,-10,-30, -30,-10,30,40,40,30,-10,-30, -30,-10,30,40,40,30,-10,-30, -30,-10,20,30,30,20,-10,-30, -30,-20,-10,0,0,-10,-20,-30, -50,-40,-30,-20,-20,-30,-40,-50];
+
+  function Pos() { this.b = new Array(128).fill(0); this.side = 0; this.castle = 0; this.ep = -1; this.half = 0; this.full = 1; this.hist = []; this.kings = [4, 116]; }
+  function sqName(s) { return 'abcdefgh'[s & 7] + ((s >> 4) + 1); }
+  function nameSq(n) { return (n.charCodeAt(0) - 97) + (parseInt(n[1]) - 1) * 16; }
+  // move: from | to<<7 | promo<<14 | flags<<17 ; flags 1 cap 2 ep 4 castle 8 dbl
+  function mv(f, t, pr, fl) { return f | (t << 7) | (pr << 14) | (fl << 17); }
+  function mFrom(m) { return m & 127; } function mTo(m) { return (m >> 7) & 127; }
+  function mPro(m) { return (m >> 14) & 7; } function mFl(m) { return (m >> 17) & 15; }
+
+  Pos.prototype.load = function (fen) {
+    var parts = fen.trim().split(/\s+/); this.b.fill(0); var r = 7, f = 0;
+    for (var i = 0; i < parts[0].length; i++) {
+      var c = parts[0][i];
+      if (c === '/') { r--; f = 0; } else if (c >= '1' && c <= '8') f += +c;
+      else { var t = 'pnbrqk'.indexOf(c.toLowerCase()) + 1; var col = c === c.toLowerCase() ? BLACK : 0; var s = r * 16 + f; this.b[s] = t | col; if (t === K) this.kings[col ? 1 : 0] = s; f++; }
+    }
+    this.side = parts[1] === 'b' ? 1 : 0; this.castle = 0; var cs = parts[2] || '-';
+    if (cs.indexOf('K') >= 0) this.castle |= 1; if (cs.indexOf('Q') >= 0) this.castle |= 2;
+    if (cs.indexOf('k') >= 0) this.castle |= 4; if (cs.indexOf('q') >= 0) this.castle |= 8;
+    this.ep = (parts[3] && parts[3] !== '-') ? nameSq(parts[3]) : -1;
+    this.half = +(parts[4] || 0); this.full = +(parts[5] || 1); this.hist = []; return this;
+  };
+  Pos.prototype.fen = function () {
+    var s = ''; for (var r = 7; r >= 0; r--) { var e = 0; for (var f = 0; f < 8; f++) { var p = this.b[r * 16 + f]; if (!p) { e++; continue; } if (e) { s += e; e = 0; } var ch = ' pnbrqk'[p & 7]; s += (p & BLACK) ? ch : ch.toUpperCase(); } if (e) s += e; if (r) s += '/'; }
+    var c = ''; if (this.castle & 1) c += 'K'; if (this.castle & 2) c += 'Q'; if (this.castle & 4) c += 'k'; if (this.castle & 8) c += 'q';
+    return s + ' ' + (this.side ? 'b' : 'w') + ' ' + (c || '-') + ' ' + (this.ep >= 0 ? sqName(this.ep) : '-') + ' ' + this.half + ' ' + this.full;
+  };
+  Pos.prototype.attacked = function (s, by) {
+    var b = this.b, col = by ? BLACK : 0, i, t, d;
+    var pd = by ? 16 : -16; // pawn of 'by' sits at s - dir
+    t = s + pd - 1; if (!(t & 0x88) && b[t] === (P | col)) return true;
+    t = s + pd + 1; if (!(t & 0x88) && b[t] === (P | col)) return true;
+    for (i = 0; i < 8; i++) { t = s + NDIR[i]; if (!(t & 0x88) && b[t] === (N | col)) return true; }
+    for (i = 0; i < 8; i++) { t = s + KDIR[i]; if (!(t & 0x88) && b[t] === (K | col)) return true; }
+    for (i = 0; i < 4; i++) { d = BDIR[i]; t = s + d; while (!(t & 0x88)) { var p = b[t]; if (p) { if (p === (B | col) || p === (Q | col)) return true; break; } t += d; } }
+    for (i = 0; i < 4; i++) { d = RDIR[i]; t = s + d; while (!(t & 0x88)) { var p2 = b[t]; if (p2) { if (p2 === (R | col) || p2 === (Q | col)) return true; break; } t += d; } }
+    return false;
+  };
+  Pos.prototype.inCheck = function (side) { if (side === undefined) side = this.side; return this.attacked(this.kings[side], side ^ 1); };
+  Pos.prototype.pseudo = function (capsOnly) {
+    var b = this.b, us = this.side, col = us ? BLACK : 0, out = [], s, p, t, i, d;
+    for (s = 0; s < 120; s++) {
+      if (s & 0x88) { s += 7; continue; }
+      p = b[s]; if (!p || (p & BLACK) !== col) continue; var ty = p & 7;
+      if (ty === P) {
+        var dir = us ? -16 : 16, startR = us ? 6 : 1, promR = us ? 0 : 7;
+        t = s + dir;
+        if (!capsOnly && !(t & 0x88) && !b[t]) {
+          if ((t >> 4) === promR) { for (var q = Q; q >= N; q--) out.push(mv(s, t, q, 0)); }
+          else { out.push(mv(s, t, 0, 0)); if ((s >> 4) === startR && !b[t + dir]) out.push(mv(s, t + dir, 0, 8)); }
+        } else if (capsOnly && !(t & 0x88) && !b[t] && (t >> 4) === promR) out.push(mv(s, t, Q, 0));
+        for (i = -1; i <= 1; i += 2) {
+          t = s + dir + i; if (t & 0x88) continue;
+          if (b[t] && (b[t] & BLACK) !== col) { if ((t >> 4) === promR) { for (var q2 = Q; q2 >= N; q2--) { if (capsOnly && q2 !== Q) continue; out.push(mv(s, t, q2, 1)); } } else out.push(mv(s, t, 0, 1)); }
+          else if (t === this.ep) out.push(mv(s, t, 0, 3));
+        }
+      } else if (ty === N || ty === K) {
+        var dirs = ty === N ? NDIR : KDIR;
+        for (i = 0; i < 8; i++) { t = s + dirs[i]; if (t & 0x88) continue; if (!b[t]) { if (!capsOnly) out.push(mv(s, t, 0, 0)); } else if ((b[t] & BLACK) !== col) out.push(mv(s, t, 0, 1)); }
+        if (ty === K && !capsOnly) {
+          var them = us ^ 1, base = us ? 112 : 0;
+          if (s === base + 4) {
+            if ((this.castle & (us ? 4 : 1)) && !b[base + 5] && !b[base + 6] && b[base + 7] === (R | col) && !this.attacked(base + 4, them) && !this.attacked(base + 5, them) && !this.attacked(base + 6, them)) out.push(mv(s, base + 6, 0, 4));
+            if ((this.castle & (us ? 8 : 2)) && !b[base + 3] && !b[base + 2] && !b[base + 1] && b[base] === (R | col) && !this.attacked(base + 4, them) && !this.attacked(base + 3, them) && !this.attacked(base + 2, them)) out.push(mv(s, base + 2, 0, 4));
+          }
+        }
+      } else {
+        var ds = ty === B ? BDIR : ty === R ? RDIR : KDIR;
+        for (i = 0; i < ds.length; i++) { d = ds[i]; t = s + d; while (!(t & 0x88)) { if (!b[t]) { if (!capsOnly) out.push(mv(s, t, 0, 0)); } else { if ((b[t] & BLACK) !== col) out.push(mv(s, t, 0, 1)); break; } t += d; } }
+      }
+    }
+    return out;
+  };
+  var CASTLE_MASK = new Array(128).fill(15);
+  CASTLE_MASK[0] = 13; CASTLE_MASK[7] = 14; CASTLE_MASK[4] = 12; CASTLE_MASK[112] = 7; CASTLE_MASK[119] = 11; CASTLE_MASK[116] = 3;
+  Pos.prototype.make = function (m) {
+    var b = this.b, f = mFrom(m), t = mTo(m), pr = mPro(m), fl = mFl(m), p = b[f], us = this.side;
+    var cap = b[t], capSq = t;
+    if (fl & 2) { capSq = t + (us ? 16 : -16); cap = b[capSq]; b[capSq] = 0; }
+    this.hist.push([m, cap, capSq, this.castle, this.ep, this.half]);
+    b[t] = pr ? (pr | (us ? BLACK : 0)) : p; b[f] = 0;
+    if (fl & 4) { var base = us ? 112 : 0; if (t === base + 6) { b[base + 5] = b[base + 7]; b[base + 7] = 0; } else { b[base + 3] = b[base]; b[base] = 0; } }
+    if ((p & 7) === K) this.kings[us] = t;
+    this.castle &= CASTLE_MASK[f] & CASTLE_MASK[t];
+    this.ep = (fl & 8) ? (f + t) >> 1 : -1;
+    this.half = (cap || (p & 7) === P) ? 0 : this.half + 1;
+    if (us) this.full++;
+    this.side ^= 1;
+  };
+  Pos.prototype.unmake = function () {
+    var h = this.hist.pop(), m = h[0], b = this.b, f = mFrom(m), t = mTo(m), fl = mFl(m);
+    this.side ^= 1; var us = this.side; if (us) this.full--;
+    var p = b[t]; if (mPro(m)) p = P | (us ? BLACK : 0);
+    b[f] = p; b[t] = 0; b[h[2]] = h[1];
+    if (fl & 4) { var base = us ? 112 : 0; if (t === base + 6) { b[base + 7] = b[base + 5]; b[base + 5] = 0; } else { b[base] = b[base + 3]; b[base + 3] = 0; } }
+    if ((p & 7) === K) this.kings[us] = f;
+    this.castle = h[3]; this.ep = h[4]; this.half = h[5];
+  };
+  Pos.prototype.legal = function () {
+    var ms = this.pseudo(false), out = [];
+    for (var i = 0; i < ms.length; i++) { this.make(ms[i]); if (!this.inCheck(this.side ^ 1)) out.push(ms[i]); this.unmake(); }
+    return out;
+  };
+  Pos.prototype.uci = function (m) { return sqName(mFrom(m)) + sqName(mTo(m)) + (mPro(m) ? ' pnbrqk'[mPro(m)] : ''); };
+  Pos.prototype.fromUci = function (u) { var ms = this.legal(); for (var i = 0; i < ms.length; i++) if (this.uci(ms[i]) === u || (u.length === 4 && this.uci(ms[i]) === u + 'q')) return ms[i]; return 0; };
+  Pos.prototype.san = function (m) {
+    var f = mFrom(m), t = mTo(m), p = this.b[f] & 7, fl = mFl(m), s;
+    if (fl & 4) s = (t & 7) === 6 ? 'O-O' : 'O-O-O';
+    else {
+      s = '';
+      if (p !== P) {
+        s = ' PNBRQK'[p];
+        var ms = this.legal(), sameF = false, sameR = false, amb = false;
+        for (var i = 0; i < ms.length; i++) { var o = ms[i]; if (o !== m && mTo(o) === t && (this.b[mFrom(o)] & 7) === p) { amb = true; if ((mFrom(o) & 7) === (f & 7)) sameF = true; if ((mFrom(o) >> 4) === (f >> 4)) sameR = true; } }
+        if (amb) { if (!sameF) s += 'abcdefgh'[f & 7]; else if (!sameR) s += (f >> 4) + 1; else s += sqName(f); }
+      }
+      if (fl & 1) { if (p === P) s += 'abcdefgh'[f & 7]; s += 'x'; }
+      s += sqName(t);
+      if (mPro(m)) s += '=' + ' PNBRQK'[mPro(m)];
+    }
+    this.make(m); if (this.inCheck()) s += this.legal().length ? '+' : '#'; this.unmake();
+    return s;
+  };
+  // squares whose contents change with move m (for vision matching)
+  Pos.prototype.touched = function (m) {
+    var f = mFrom(m), t = mTo(m), fl = mFl(m), us = this.side, arr = [f, t];
+    if (fl & 2) arr.push(t + (us ? 16 : -16));
+    if (fl & 4) { var base = us ? 112 : 0; if (t === base + 6) arr.push(base + 7, base + 5); else arr.push(base, base + 3); }
+    return arr;
+  };
+  Pos.prototype.evaluate = function () {
+    var b = this.b, mg = 0, mat = 0, s, p;
+    for (s = 0; s < 120; s++) { if (s & 0x88) { s += 7; continue; } p = b[s]; if (p && (p & 7) !== K && (p & 7) !== P) mat += VAL[p & 7]; }
+    var endg = mat <= 1300;
+    for (s = 0; s < 120; s++) {
+      if (s & 0x88) { s += 7; continue; } p = b[s]; if (!p) continue;
+      var ty = p & 7, white = !(p & BLACK), idx = white ? ((s >> 4) * 8 + (s & 7)) : ((7 - (s >> 4)) * 8 + (s & 7));
+      var v = VAL[ty] + (ty === K && endg ? KEND[idx] : PST[ty][idx]);
+      mg += white ? v : -v;
+    }
+    return this.side ? -mg : mg;
+  };
+
+  // ---- search ----
+  var MATE = 100000;
+  function Searcher(pos) { this.pos = pos; this.nodes = 0; this.stop = false; this.killers = []; this.hh = {}; }
+  Searcher.prototype.order = function (ms, best, ply) {
+    var b = this.pos.b, k = this.killers[ply] || [], hh = this.hh, sc = new Array(ms.length);
+    for (var i = 0; i < ms.length; i++) {
+      var m = ms[i], s = 0;
+      if (m === best) s = 1e7;
+      else if (mFl(m) & 1) s = 1e6 + VAL[b[mTo(m)] & 7 || 1] * 10 - VAL[b[mFrom(m)] & 7];
+      else if (mPro(m)) s = 9e5;
+      else if (m === k[0] || m === k[1]) s = 8e5;
+      else s = hh[m & 16383] || 0;
+      sc[i] = s;
+    }
+    var idx = ms.map(function (_, i) { return i; }); idx.sort(function (a, c) { return sc[c] - sc[a]; });
+    return idx.map(function (i) { return ms[i]; });
+  };
+  Searcher.prototype.timeUp = function () { if ((this.nodes & 2047) === 0 && Date.now() > this.deadline) this.stop = true; return this.stop; };
+  Searcher.prototype.qs = function (a, bt, ply) {
+    this.nodes++; if (this.timeUp()) return 0;
+    var stand = this.pos.evaluate(); if (stand >= bt) return stand; if (stand > a) a = stand;
+    var ms = this.order(this.pos.pseudo(true), 0, ply);
+    for (var i = 0; i < ms.length; i++) {
+      this.pos.make(ms[i]); if (this.pos.inCheck(this.pos.side ^ 1)) { this.pos.unmake(); continue; }
+      var v = -this.qs(-bt, -a, ply + 1); this.pos.unmake();
+      if (this.stop) return 0; if (v >= bt) return v; if (v > a) a = v;
+    }
+    return a;
+  };
+  Searcher.prototype.ab = function (d, a, bt, ply, pv) {
+    var pos = this.pos, chk = pos.inCheck(); if (chk) d++;
+    if (d <= 0) return this.qs(a, bt, ply);
+    this.nodes++; if (this.timeUp()) return 0;
+    if (ply > 0 && pos.half >= 100) return 0;
+    var ms = this.order(pos.pseudo(false), pv[ply] || 0, ply), legalN = 0, best = -MATE * 2, bm = 0;
+    for (var i = 0; i < ms.length; i++) {
+      var m = ms[i]; pos.make(m); if (pos.inCheck(pos.side ^ 1)) { pos.unmake(); continue; }
+      legalN++; var v;
+      if (legalN === 1) v = -this.ab(d - 1, -bt, -a, ply + 1, pv);
+      else { v = -this.ab(d - 1, -a - 1, -a, ply + 1, pv); if (v > a && v < bt) v = -this.ab(d - 1, -bt, -a, ply + 1, pv); }
+      pos.unmake(); if (this.stop) return 0;
+      if (v > best) { best = v; bm = m; }
+      if (v > a) { a = v; this.pvt[ply] = [m].concat(this.pvt[ply + 1] || []); }
+      if (a >= bt) { if (!(mFl(m) & 1)) { var k = this.killers[ply] || (this.killers[ply] = [0, 0]); if (k[0] !== m) { k[1] = k[0]; k[0] = m; } this.hh[m & 16383] = (this.hh[m & 16383] || 0) + d * d; } break; }
+    }
+    if (!legalN) return chk ? -MATE + ply : 0;
+    return best;
+  };
+  Searcher.prototype.go = function (ms_time, onInfo) {
+    this.deadline = Date.now() + ms_time; this.stop = false; var pv = [], bestLine = [], bestScore = 0, depth = 0;
+    var root = this.pos.legal(); if (!root.length) return null;
+    for (var d = 1; d <= 64; d++) {
+      this.pvt = []; var sc = this.ab(d, -MATE * 2, MATE * 2, 0, pv);
+      if (this.stop && d > 1) break;
+      if (this.pvt[0] && this.pvt[0].length) { bestLine = this.pvt[0]; pv = bestLine.slice(); bestScore = sc; depth = d; }
+      if (onInfo) onInfo({ depth: d, score: sc, pv: bestLine, nodes: this.nodes });
+      if (Math.abs(sc) > MATE - 100) break;
+      if (Date.now() > this.deadline - ms_time * 0.5 && d > 3) break;
+    }
+    if (!bestLine.length) bestLine = [root[0]];
+    return { move: bestLine[0], score: bestScore, depth: depth, pv: bestLine };
+  };
+  return { Pos: Pos, Searcher: Searcher, sqName: sqName, nameSq: nameSq, mFrom: mFrom, mTo: mTo, mPro: mPro, mFl: mFl, MATE: MATE, START: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' };
+})();
+
+
+</script>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const game=new CE.Pos().load(CE.START);
+let sans=[], flipped=false, mySide='w', thinkMs=1500, sel=-1, best=null, lastMove=null;
+const GL={1:'♟',2:'♞',3:'♝',4:'♜',5:'♛',6:'♚'};
+function setStatus(t,warn){const s=$('status');s.textContent=t;s.className=warn?'warn':'';}
+
+/* ---------- board UI ---------- */
+function renderBoard(){
+  const el=$('board');el.innerHTML='';
+  for(let row=0;row<8;row++)for(let col=0;col<8;col++){
+    const r=flipped?row:7-row,f=flipped?7-col:col,s=r*16+f;
+    const d=document.createElement('div');d.className='sq '+((r+f)%2?'lt':'dk');
+    if(lastMove&&(lastMove[0]===s||lastMove[1]===s))d.classList.add('last');
+    if(sel===s)d.classList.add('sel');
+    const p=game.b[s];
+    if(p){const sp=document.createElement('span');sp.className='pc '+(p&8?'b':'w');sp.textContent=GL[p&7]+'︎';d.appendChild(sp);}
+    if(col===7){const c=document.createElement('span');c.className='co r';c.style.left='auto';c.style.right='3px';c.textContent=r+1;d.appendChild(c);}
+    if(row===7){const c=document.createElement('span');c.className='co f';c.style.right='auto';c.style.left='3px';c.textContent='abcdefgh'[f];d.appendChild(c);}
+    d.onclick=()=>tapSq(s);el.appendChild(d);
+  }
+  drawBoardArrow();
+  let h='';for(let i=0;i<sans.length;i+=2)h+='<b>'+(i/2+1)+'.</b> '+sans[i]+' '+(sans[i+1]||'')+'  ';
+  $('moves').innerHTML=h||'ยังไม่มีการเดิน';$('moves').scrollTop=1e6;
+}
+function drawBoardArrow(){
+  const svg=$('arrows');
+  if(!best){svg.innerHTML='';return;}
+  const c=s=>{const f=s&7,r=s>>4;return[(flipped?7-f:f)+.5,(flipped?r:7-r)+.5];};
+  const [x1,y1]=c(best.from),[x2,y2]=c(best.to);
+  const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,ex=x2-ux*.35,ey=y2-uy*.35;
+  svg.innerHTML=`<line x1="${x1}" y1="${y1}" x2="${ex}" y2="${ey}" stroke="#16b85f" stroke-width=".2" stroke-linecap="round" opacity=".9"/>
+  <polygon points="${x2},${y2} ${ex-uy*.28},${ey+ux*.28} ${ex+uy*.28},${ey-ux*.28}" fill="#16b85f" opacity=".9"/>`;
+}
+function tapSq(s){
+  const p=game.b[s];
+  if(sel<0){if(p&&((p&8)?1:0)===game.side){sel=s;renderBoard();}return;}
+  if(s===sel){sel=-1;renderBoard();return;}
+  const ms=game.legal().filter(m=>CE.mFrom(m)===sel&&CE.mTo(m)===s);
+  if(ms.length){const m=ms.find(m=>!CE.mPro(m)||CE.mPro(m)===5)||ms[0];sel=-1;applyMove(m,'manual');}
+  else if(p&&((p&8)?1:0)===game.side){sel=s;renderBoard();}
+  else{sel=-1;renderBoard();}
+}
+function applyMove(m,src){
+  const san=game.san(m);lastMove=[CE.mFrom(m),CE.mTo(m)];
+  game.make(m);sans.push(san);sel=-1;hideCands();
+  if(src==='manual'&&tracking)refF=null; // re-sync camera after manual edits
+  renderBoard();requestAnalysis();
+  if(src==='camera'){setStatus('✅ ตรวจพบ: '+san);try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}}
+  else if(src==='pick'){setStatus('✅ บันทึก: '+san);}
+  return san;
+}
+
+/* ---------- engines ---------- */
+let searchId=0,sf=null,sfReady=false,sfBusy=false,sfCur=null,sfQueued=null,bw=null;
+const engSrc=$('eng').textContent+`
+onmessage=function(e){var d=e.data,p=new CE.Pos().load(d.fen),s=new CE.Searcher(p);
+function conv(i){var o={depth:i.depth,pv:i.pv.map(function(m){return p.uci(m);})};
+ if(Math.abs(i.score)>CE.MATE-300){var n=Math.ceil((CE.MATE-Math.abs(i.score))/2);o.mate=i.score>0?n:-n;}else o.cp=i.score;return o;}
+var r=s.go(d.time,function(i){if(i.pv.length)postMessage({info:conv(i)});});
+postMessage({done:true,best:r?p.uci(r.move):null,info:r?conv(r):null});};`;
+const engURL=URL.createObjectURL(new Blob([engSrc],{type:'text/javascript'}));
+function setEngLabel(){const e=$('engLabel');if(sfReady){e.textContent='Stockfish 10 ✓';e.className='pill ok';}else{e.textContent='Engine ในตัว (Stockfish กำลังโหลด…)';e.className='pill';}}
+function initSF(){
+  try{
+    sf=new Worker(URL.createObjectURL(new Blob(["importScripts('https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js');"],{type:'text/javascript'})));
+    sf.onmessage=e=>sfLine(String(e.data));
+    sf.onerror=()=>{sf=null;sfReady=false;$('engLabel').textContent='Engine ในตัว';};
+    sf.postMessage('uci');
+    setTimeout(()=>{if(!sfReady)$('engLabel').textContent='Engine ในตัว';},20000);
+  }catch(e){sf=null;$('engLabel').textContent='Engine ในตัว';}
+}
+function sfLine(l){
+  if(l==='uciok'){sf.postMessage('setoption name Hash value 32');sf.postMessage('isready');return;}
+  if(l==='readyok'&&!sfReady){sfReady=true;setEngLabel();requestAnalysis();return;}
+  if(l.startsWith('info ')&&l.indexOf(' pv ')>0&&sfCur&&!sfCur.stopped){
+    const t=l.split(' '),o={};
+    for(let i=0;i<t.length;i++){
+      if(t[i]==='depth')o.depth=+t[i+1];
+      else if(t[i]==='score'){if(t[i+1]==='cp')o.cp=+t[i+2];else o.mate=+t[i+2];}
+      else if(t[i]==='pv'){o.pv=t.slice(i+1);break;}
+    }
+    onInfo(sfCur.id,sfCur.fen,o);return;
+  }
+  if(l.startsWith('bestmove')){
+    const c=sfCur;sfBusy=false;sfCur=null;
+    if(c&&!c.stopped)onBest(c.id,c.fen,l.split(' ')[1]);
+    if(sfQueued){const q=sfQueued;sfQueued=null;sfStart(q);}
+  }
+}
+function sfStart(j){sfBusy=true;sfCur=j;sf.postMessage('position fen '+j.fen);sf.postMessage('go movetime '+thinkMs);}
+function stopAll(){if(bw){bw.terminate();bw=null;}if(sfBusy&&sfCur){sfCur.stopped=true;sf.postMessage('stop');}sfQueued=null;}
+function requestAnalysis(){
+  const id=++searchId;stopAll();best=null;drawBoardArrow();drawOverlay();
+  const ms=game.legal();
+  if(!ms.length){$('bestMove').textContent=game.inCheck()?'รุกจน!':'อับ (เสมอ)';$('bestSub').textContent='จบเกม';$('bestEval').textContent=game.inCheck()?((game.side?'ขาว':'ดำ')+'ชนะ 🎉'):'';$('pv').textContent='';setBar(game.inCheck()?(game.side?1:0):.5);return;}
+  const stm=game.side?'b':'w';
+  if(mySide!=='both'&&stm!==mySide){$('bestSub').textContent='ตาของฝ่ายตรงข้าม';$('bestMove').textContent='รอเขาเดิน…';$('bestEval').textContent='';$('pv').textContent='';return;}
+  $('bestSub').textContent='กำลังคิดให้ฝั่ง'+(stm==='w'?'ขาว':'ดำ')+'…';$('bestMove').textContent='…';
+  const fen=game.fen();
+  if(sfReady){const j={fen,id};if(sfBusy)sfQueued=j;else sfStart(j);}
+  else{bw=new Worker(engURL);bw.onmessage=e=>{const d=e.data;if(d.done){if(d.info)onInfo(id,fen,d.info);if(d.best)onBest(id,fen,d.best);bw=null;}else onInfo(id,fen,d.info);};bw.postMessage({fen,time:thinkMs});}
+}
+function setBar(x){$('evalfill').style.height=(Math.max(.03,Math.min(.97,x))*100)+'%';}
+function sanLine(fen,ucis,n){const p=new CE.Pos().load(fen),out=[];for(const u of ucis.slice(0,n)){const m=p.fromUci(u);if(!m)break;out.push(p.san(m));p.make(m);}return out;}
+function onInfo(id,fen,o){
+  if(id!==searchId||!o||!o.pv||!o.pv.length)return;
+  const p=new CE.Pos().load(fen),m=p.fromUci(o.pv[0]);if(!m)return;
+  best={from:CE.mFrom(m),to:CE.mTo(m),uci:o.pv[0]};
+  const sgn=p.side?-1:1;let txt,bar;
+  if(o.mate!==undefined){const mm=o.mate*sgn;txt=(mm>0?'ขาว':'ดำ')+'รุกจนใน '+Math.abs(o.mate)+' ตา';bar=mm>0?1:0;}
+  else{const cp=o.cp*sgn/100;txt=(cp>=0?'+':'')+cp.toFixed(2)+'  '+(Math.abs(cp)<.3?'(สูสี)':cp>0?'(ขาวได้เปรียบ)':'(ดำได้เปรียบ)');bar=1/(1+Math.exp(-cp*.7));}
+  $('bestMove').textContent=p.san(m)+'  '+o.pv[0].slice(0,2)+'→'+o.pv[0].slice(2,4);
+  $('bestSub').textContent='ตาเดินที่ดีที่สุดสำหรับ'+(p.side?'ดำ':'ขาว')+' · ลึก '+(o.depth||'?');
+  $('bestEval').textContent=txt;setBar(bar);
+  $('pv').textContent='แนวต่อ: '+sanLine(fen,o.pv,8).join(' ');
+  drawBoardArrow();drawOverlay();
+}
+function onBest(id,fen,u){if(id!==searchId)return;$('bestSub').textContent=$('bestSub').textContent.replace('กำลังคิด','');}
+
+/* ---------- vision ---------- */
+const vid=$('vid'),photo=$('photo'),ov=$('ov'),octx=ov.getContext('2d');
+const work=document.createElement('canvas'),wctx=work.getContext('2d',{willReadFrequently:true});
+let mode=null,corners=null,Hm=null,calib=null,drag=-1,tracking=false,timer=null;
+let prevF=null,refF=null,lastF=null,stable=0,pending=null,lastDiff=null;
+const NS=4,STABLE_N=6;
+try{const c=JSON.parse(localStorage.getItem('chesscam.corners')||'null');if(c&&c.length===4){corners=c;computeH();}}catch(e){}
+function media(){return mode==='live'?vid:mode==='photo'?photo:null;}
+function mediaReady(){return mode==='live'?vid.readyState>=2&&vid.videoWidth>0:mode==='photo'&&photo.width>0;}
+function solve(A,b){const n=b.length;for(let i=0;i<n;i++){let mx=i;for(let k=i+1;k<n;k++)if(Math.abs(A[k][i])>Math.abs(A[mx][i]))mx=k;[A[i],A[mx]]=[A[mx],A[i]];[b[i],b[mx]]=[b[mx],b[i]];for(let k=i+1;k<n;k++){const f=A[k][i]/A[i][i];for(let j=i;j<n;j++)A[k][j]-=f*A[i][j];b[k]-=f*b[i];}}const x=new Array(n);for(let i=n-1;i>=0;i--){let s=b[i];for(let j=i+1;j<n;j++)s-=A[i][j]*x[j];x[i]=s/A[i][i];}return x;}
+function computeH(){const src=[[0,0],[8,0],[8,8],[0,8]],A=[],b=[];for(let i=0;i<4;i++){const[u,v]=src[i],{x,y}=corners[i];A.push([u,v,1,0,0,0,-u*x,-v*x]);b.push(x);A.push([0,0,0,u,v,1,-u*y,-v*y]);b.push(y);}Hm=solve(A,b);}
+function H(u,v){const h=Hm,w=h[6]*u+h[7]*v+1;return{x:(h[0]*u+h[1]*v+h[2])/w,y:(h[3]*u+h[4]*v+h[5])/w};}
+function features(){
+  const m=media(),mw=m.videoWidth||m.width,mh=m.videoHeight||m.height,W=360,Hh=Math.round(W*mh/mw);
+  if(work.width!==W||work.height!==Hh){work.width=W;work.height=Hh;}
+  wctx.drawImage(m,0,0,W,Hh);const d=wctx.getImageData(0,0,W,Hh).data;
+  const F=new Float32Array(64*NS*NS*3);let k=0;
+  for(let r=0;r<8;r++)for(let f=0;f<8;f++)for(let i=0;i<NS;i++)for(let j=0;j<NS;j++){
+    const p=H(f+.2+.6*(i+.5)/NS,r+.2+.6*(j+.5)/NS);
+    let X=Math.round(p.x*W),Y=Math.round(p.y*Hh);X=Math.max(0,Math.min(W-2,X));Y=Math.max(0,Math.min(Hh-2,Y));
+    for(let c=0;c<3;c++){const o=(Y*W+X)*4+c;F[k++]=(d[o]+d[o+4]+d[o+W*4]+d[o+W*4+4])/4;}
+  }
+  return F;
+}
+function diff(A,B){const per=NS*NS*3,d=new Float32Array(64);for(let s=0;s<64;s++){let t=0;for(let i=s*per;i<(s+1)*per;i++)t+=Math.abs(A[i]-B[i]);d[s]=t/per;}const srt=Array.from(d).sort((a,b)=>a-b),med=(srt[31]+srt[32])/2;for(let s=0;s<64;s++)d[s]=Math.max(0,d[s]-med);return d;}
+const sens=()=>+$('sens').value;
+function infer(d,F){
+  const ms=game.legal().filter(m=>!CE.mPro(m)||CE.mPro(m)===5);
+  const res=ms.map(m=>{const T=game.touched(m).map(s=>(s>>4)*8+(s&7));let sum=0;for(const k of T)sum+=d[k];const mean=sum/T.length,minT=Math.min(d[T[0]],d[T[1]]);let other=0;for(let k=0;k<64;k++)if(T.indexOf(k)<0&&d[k]>other)other=d[k];return{m,mean,other,score:mean+.6*minT-.8*other};}).sort((a,b)=>b.score-a.score);
+  if(!res.length)return;
+  const b=res[0],s2=res[1],TC=16/sens();
+  if(b.mean>TC&&Math.min(d[(CE.mFrom(b.m)>>4)*8+(CE.mFrom(b.m)&7)],d[(CE.mTo(b.m)>>4)*8+(CE.mTo(b.m)&7)])>TC*.6&&(!s2||b.score-s2.score>6)&&b.other<b.mean*.6){refF=F;applyMove(b.m,'camera');}
+  else{pending=res.slice(0,4);showCands();setStatus('เห็นการเปลี่ยนแปลง แต่ไม่แน่ใจ — เลือกตาเดินด้านล่าง หรือขยับให้ชัดแล้วรอ',true);}
+}
+function showCands(){const box=$('candBtns');box.innerHTML='';for(const c of pending){const b=document.createElement('button');b.textContent=game.san(c.m);b.onclick=()=>{refF=lastF;applyMove(c.m,'pick');};box.appendChild(b);}const nb=document.createElement('button');nb.textContent='ไม่มีการเดิน (มือบัง)';nb.onclick=()=>{refF=lastF;hideCands();setStatus('อัปเดตภาพอ้างอิงแล้ว');};box.appendChild(nb);$('cands').style.display='block';}
+function hideCands(){pending=null;$('cands').style.display='none';}
+function tick(){
+  if(!tracking||!Hm||!mediaReady()||calib)return;
+  const F=features();lastF=F;let moving=false;
+  if(prevF){const m=diff(F,prevF);moving=Math.max(...m)>12/sens();}
+  prevF=F;
+  if(moving){if(stable>=STABLE_N&&refF)setStatus('มีการเคลื่อนไหว… รอให้ภาพนิ่ง');stable=0;return;}
+  stable++;
+  if(stable!==STABLE_N)return;
+  if(!refF){refF=F;setStatus('🟢 พร้อม! เดินหมากได้เลย (ตา'+(game.side?'ดำ':'ขาว')+')');return;}
+  const d=diff(F,refF);lastDiff=d;
+  if(Math.max(...d)<14/sens()){refF=F;if(pending)hideCands();setStatus('🟢 รอการเดินของ'+(game.side?'ดำ':'ขาว')+'…');drawOverlay();return;}
+  infer(d,F);drawOverlay();
+}
+function processPhoto(){
+  if(!Hm){startCalib();return;}
+  const F=features();lastF=F;
+  if(!refF){refF=F;setStatus('📸 บันทึกภาพอ้างอิงแล้ว — เดินหมาก แล้วถ่ายรูปใหม่');return;}
+  const d=diff(F,refF);lastDiff=d;
+  if(Math.max(...d)<14/sens()){setStatus('ไม่เห็นการเปลี่ยนแปลงในรูปนี้',true);return;}
+  infer(d,F);drawOverlay();
+}
+/* overlay */
+function sizeOverlay(){const m=media();if(!m)return;const r=m.getBoundingClientRect(),sr=$('stage').getBoundingClientRect();const dpr=window.devicePixelRatio||1;ov.style.left=(r.left-sr.left)+'px';ov.style.top=(r.top-sr.top)+'px';ov.style.width=r.width+'px';ov.style.height=r.height+'px';ov.width=Math.round(r.width*dpr);ov.height=Math.round(r.height*dpr);}
+function drawOverlay(){
+  const m=media();if(!m)return;sizeOverlay();const w=ov.width,h=ov.height,dpr=window.devicePixelRatio||1;octx.clearRect(0,0,w,h);
+  const P=(u,v)=>{const p=H(u,v);return[p.x*w,p.y*h];};
+  const pts=calib?calib:corners;
+  if(Hm&&!calib){
+    octx.lineWidth=1.2*dpr;octx.strokeStyle='rgba(61,220,132,.7)';octx.beginPath();
+    for(let i=0;i<=8;i++){let a=P(i,0),b=P(i,8);octx.moveTo(...a);octx.lineTo(...b);a=P(0,i);b=P(8,i);octx.moveTo(...a);octx.lineTo(...b);}octx.stroke();
+    if(lastDiff&&pending){for(let s=0;s<64;s++){const v=lastDiff[s];if(v<8)continue;const f=s%8,r=s>>3;octx.fillStyle='rgba(255,182,72,'+Math.min(.5,v/80)+')';octx.beginPath();octx.moveTo(...P(f,r));octx.lineTo(...P(f+1,r));octx.lineTo(...P(f+1,r+1));octx.lineTo(...P(f,r+1));octx.fill();}}
+    if(best){const c=s=>P((s&7)+.5,(s>>4)+.5);const[x1,y1]=c(best.from),[x2,y2]=c(best.to);const a=Math.atan2(y2-y1,x2-x1),hl=18*dpr;
+      octx.strokeStyle='#22e07a';octx.fillStyle='#22e07a';octx.lineWidth=7*dpr;octx.lineCap='round';octx.shadowColor='#000';octx.shadowBlur=6*dpr;
+      octx.beginPath();octx.moveTo(x1,y1);octx.lineTo(x2-Math.cos(a)*hl*.8,y2-Math.sin(a)*hl*.8);octx.stroke();
+      octx.beginPath();octx.moveTo(x2,y2);octx.lineTo(x2-hl*Math.cos(a-.45),y2-hl*Math.sin(a-.45));octx.lineTo(x2-hl*Math.cos(a+.45),y2-hl*Math.sin(a+.45));octx.fill();octx.shadowBlur=0;}
+  }
+  if(pts){const L=['a1','h1','h8','a8'];pts.forEach((p,i)=>{const x=p.x*w,y=p.y*h;octx.fillStyle='#ffb648';octx.beginPath();octx.arc(x,y,7*dpr,0,7);octx.fill();octx.fillStyle='#fff';octx.font=(13*dpr)+'px sans-serif';octx.fillText(L[i],x+9*dpr,y-9*dpr);});}
+}
+function evPt(e){const r=ov.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};}
+const CAL_TXT=['แตะมุมนอกของ a1 (มุมที่เรือขาวฝั่งซ้ายยืน)','แตะมุม h1 (เรือขาวฝั่งขวา)','แตะมุม h8 (เรือดำฝั่งเดียวกับ h1)','แตะมุม a8'];
+function startCalib(){if(!media()){setStatus('เปิดกล้องหรือถ่ายรูปก่อน',true);return;}calib=[];refF=null;setStatus('📐 '+CAL_TXT[0]);drawOverlay();}
+ov.addEventListener('pointerdown',e=>{
+  const p=evPt(e);
+  if(calib){calib.push(p);if(calib.length<4){setStatus('📐 '+CAL_TXT[calib.length]);drawOverlay();}else{corners=calib;calib=null;computeH();saveCorners();setStatus('ตั้งมุมเสร็จ ✓ ลากจุดมุมเพื่อปรับให้ตรงเส้นได้ — กำลังจับภาพอ้างอิง…');refF=null;stable=0;drawOverlay();if(mode==='photo')processPhoto();}return;}
+  if(corners){const r=ov.getBoundingClientRect();let bi=-1,bd=1e9;corners.forEach((c,i)=>{const d=Math.hypot((c.x-p.x)*r.width,(c.y-p.y)*r.height);if(d<bd){bd=d;bi=i;}});if(bd<36){drag=bi;ov.setPointerCapture(e.pointerId);}}
+});
+ov.addEventListener('pointermove',e=>{if(drag<0)return;corners[drag]=evPt(e);computeH();drawOverlay();});
+ov.addEventListener('pointerup',()=>{if(drag>=0){drag=-1;saveCorners();refF=null;stable=0;if(mode==='photo'){setStatus('ปรับมุมแล้ว — ถ่ายรูปใหม่เพื่อบันทึกภาพอ้างอิง');}}});
+function saveCorners(){try{localStorage.setItem('chesscam.corners',JSON.stringify(corners));}catch(e){}}
+function showMedia(which){$('placeholder').style.display='none';vid.style.display=which==='live'?'block':'none';photo.style.display=which==='photo'?'block':'none';mode=which;}
+async function startCam(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setStatus('เบราว์เซอร์/หน้านี้ไม่อนุญาตกล้องสด — ใช้ปุ่ม “ถ่ายรูป” หลังแต่ละตาเดินแทน (หรือเปิดไฟล์นี้ผ่าน https)',true);return;}
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    vid.srcObject=st;await vid.play();showMedia('live');refF=null;prevF=null;stable=0;
+    vid.onloadedmetadata=()=>drawOverlay();setTimeout(drawOverlay,300);
+    tracking=true;$('btnTrack').disabled=false;$('btnTrack').textContent='⏸ หยุดติดตาม';$('btnCam').textContent='📷 กล้องเปิดอยู่';
+    if(!timer)timer=setInterval(()=>{tick();},150);
+    if(!corners)startCalib();else setStatus('ใช้มุมกระดานเดิม (ลากปรับได้) — กำลังจับภาพอ้างอิง…');
+  }catch(e){setStatus('เปิดกล้องสดไม่ได้ ('+e.name+') — ใช้ปุ่ม “ถ่ายรูป” หลังแต่ละตาเดินแทน หรือเปิดหน้านี้ผ่าน https ในเบราว์เซอร์',true);}
+}
+$('btnCam').onclick=startCam;
+$('photoIn').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const img=new Image();
+  img.onload=()=>{const s=Math.min(1,1400/Math.max(img.width,img.height));photo.width=Math.round(img.width*s);photo.height=Math.round(img.height*s);photo.getContext('2d').drawImage(img,0,0,photo.width,photo.height);
+    if(mode==='live'){tracking=false;}showMedia('photo');requestAnimationFrame(()=>{drawOverlay();processPhoto();});URL.revokeObjectURL(img.src);};
+  img.src=URL.createObjectURL(f);e.target.value='';
+};
+$('btnCalib').onclick=startCalib;
+$('btnTrack').onclick=()=>{tracking=!tracking;$('btnTrack').textContent=tracking?'⏸ หยุดติดตาม':'▶️ ติดตามต่อ';if(tracking){refF=null;stable=0;setStatus('กำลังจับภาพอ้างอิงใหม่… (ให้กระดานตรงกับด้านขวา)');}else setStatus('หยุดติดตามชั่วคราว');};
+$('btnRef').onclick=()=>{refF=null;stable=0;hideCands();if(mode==='photo')setStatus('ถ่ายรูปถัดไปจะใช้เป็นภาพอ้างอิง');else setStatus('กำลังจับภาพอ้างอิงใหม่…');};
+window.addEventListener('resize',drawOverlay);
+
+/* ---------- controls ---------- */
+$('side').onchange=e=>{mySide=e.target.value;if(mySide==='b'&&!flipped){flipped=true;renderBoard();}if(mySide==='w'&&flipped){flipped=false;renderBoard();}requestAnalysis();};
+$('think').onchange=e=>{thinkMs=+e.target.value;requestAnalysis();};
+$('btnFlip').onclick=()=>{flipped=!flipped;renderBoard();};
+$('btnUndo').onclick=()=>{if(!game.hist.length)return;game.unmake();sans.pop();lastMove=game.hist.length?[CE.mFrom(game.hist[game.hist.length-1][0]),CE.mTo(game.hist[game.hist.length-1][0])]:null;sel=-1;hideCands();renderBoard();requestAnalysis();setStatus('ย้อนแล้ว — ถ้ากระดานจริงตรงกันแล้ว กด “จับภาพอ้างอิงใหม่”');};
+$('btnNew').onclick=()=>{game.load(CE.START);sans=[];lastMove=null;sel=-1;refF=null;stable=0;hideCands();renderBoard();requestAnalysis();setStatus('เกมใหม่ — จัดหมากตำแหน่งเริ่มต้น');};
+$('btnPlay').onclick=()=>{if(!best)return;const m=game.fromUci(best.uci);if(m){applyMove(m,'pick');if(tracking)setStatus('เดินบนกระดานจริงตามนี้ด้วย แล้วกด “จับภาพอ้างอิงใหม่”');refF=null;}};
+$('btnFen').onclick=()=>{const f=$('fenIn').value.trim();if(!f)return;try{const t=new CE.Pos().load(f);if(!t.legal||t.kings.length<2)throw 0;game.load(f);sans=[];lastMove=null;refF=null;renderBoard();requestAnalysis();setStatus('ตั้งตำแหน่งจาก FEN แล้ว');}catch(e){setStatus('FEN ไม่ถูกต้อง',true);}};
+$('btnCopy').onclick=async()=>{const f=game.fen();try{await navigator.clipboard.writeText(f);setStatus('คัดลอก FEN แล้ว');}catch(e){$('fenIn').value=f;$('fenIn').select();setStatus('เลือกข้อความ FEN ในช่องให้แล้ว — กดคัดลอกเอง');}};
+
+renderBoard();setEngLabel();initSF();requestAnalysis();
+})();
+</script>
+</body>
+</html>
